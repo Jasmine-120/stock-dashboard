@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>股票看板</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e1a;
+      --card-bg: rgba(255,255,255,0.04);
+      --card-border: rgba(0, 207, 255, 0.15);
+      --card-glow: rgba(0, 207, 255, 0.08);
+      --up: #00ff88;
+      --down: #ff3366;
+      --accent: #00cfff;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-sans: 'Inter', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      padding: 20px;
+      background-image:
+        radial-gradient(ellipse at 20% 20%, rgba(0,207,255,0.04) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 80%, rgba(0,255,136,0.03) 0%, transparent 60%);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .header-left h1 {
+      font-family: var(--font-mono);
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+      text-shadow: 0 0 20px rgba(0,207,255,0.5);
+    }
+
+    .header-left .subtitle {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 2px;
+      font-family: var(--font-mono);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      background: rgba(0,207,255,0.1);
+      border: 1px solid rgba(0,207,255,0.3);
+      color: var(--accent);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: rgba(0,207,255,0.2);
+      box-shadow: 0 0 12px rgba(0,207,255,0.3);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 24px var(--card-glow);
+      transition: transform 0.2s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.4;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0,207,255,0.15);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .card-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .card-symbol {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .card-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .tag {
+      background: rgba(0,207,255,0.1);
+      border: 1px solid rgba(0,207,255,0.25);
+      color: var(--accent);
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+    .sentiment {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+    }
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    .dot.up { background: var(--up); box-shadow: 0 0 6px var(--up); }
+    .dot.down { background: var(--down); box-shadow: 0 0 6px var(--down); }
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .card-price {
+      margin-bottom: 16px;
+    }
+    .price-main {
+      font-family: var(--font-mono);
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+    .price-change {
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      margin-top: 4px;
+    }
+    .price-change.up { color: var(--up); }
+    .price-change.down { color: var(--down); }
+
+    .chart-wrap {
+      height: 80px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .indicators {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .indicator {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+    }
+    .indicator-label {
+      font-size: 0.65rem;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      margin-bottom: 4px;
+    }
+    .indicator-value {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .btn-delete {
+      width: 100%;
+      background: rgba(255,51,102,0.08);
+      border: 1px solid rgba(255,51,102,0.2);
+      color: rgba(255,51,102,0.7);
+      padding: 6px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-delete:hover {
+      background: rgba(255,51,102,0.18);
+      color: var(--down);
+    }
+
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 4px;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #0f1525;
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 28px;
+      width: 340px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .modal h2 {
+      font-family: var(--font-mono);
+      color: var(--accent);
+      margin-bottom: 16px;
+      font-size: 1rem;
+    }
+    .modal input {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(0,207,255,0.2);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+      outline: none;
+    }
+    .modal input:focus { border-color: var(--accent); }
+    .modal-hint { font-size: 0.72rem; color: var(--muted); margin-bottom: 16px; font-family: var(--font-mono); }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions .btn { flex: 1; text-align: center; }
+    .btn-cancel {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--muted);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      flex: 1;
+    }
+
+    @media (max-width: 480px) {
+      body { padding: 12px; }
+      .grid { grid-template-columns: 1fr; }
+      .price-main { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-left">
+      <h1>// STOCK DASHBOARD</h1>
+      <div class="subtitle" id="last-update">最后更新: --</div>
+    </div>
+    <div class="header-right">
+      <button class="btn" onclick="openModal()">＋ 添加股票</button>
+      <button class="btn" onclick="refreshAll()">↻ 刷新</button>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <h2>添加股票</h2>
+      <input id="symbol-input" placeholder="输入股票代码，如 9660.HK" />
+      <div class="modal-hint">港股：XXXX.HK　A股：XXXXXX.SS / .SZ　美股：AAPL</div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">取消</button>
+        <button class="btn" onclick="addStock()">添加</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_STOCKS = [
+      { symbol: '9660.HK',   name: '地平线',  tag: 'AI芯片' },
+      { symbol: '02513.HK',  name: '智谱AI',  tag: 'AI大模型' },
+      { symbol: '00100.HK',  name: 'MiniMax', tag: 'AI大模型' },
+    ];
+
+    let stocks = loadStocks();
+    const charts = {};
+
+    function loadStocks() {
+      try {
+        const saved = localStorage.getItem('stocks');
+        return saved ? JSON.parse(saved) : DEFAULT_STOCKS;
+      } catch { return DEFAULT_STOCKS; }
+    }
+
+    function saveStocks() {
+      localStorage.setItem('stocks', JSON.stringify(stocks));
+    }
+
+    function fmtPrice(price, currency) {
+      if (price == null) return '--';
+      const prefix = currency === 'HKD' ? 'HK$' : currency === 'USD' ? '$' : currency === 'CNY' ? '¥' : '';
+      return `${prefix}${price.toFixed(3)}`;
+    }
+
+    function fmtChange(change, pct) {
+      if (change == null) return '--';
+      const sign = change >= 0 ? '+' : '';
+      return `${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%)`;
+    }
+
+    function fmtVolume(vol) {
+      if (vol == null) return '--';
+      if (vol >= 1e8) return (vol / 1e8).toFixed(2) + '亿';
+      if (vol >= 1e4) return (vol / 1e4).toFixed(1) + '万';
+      return vol.toString();
+    }
+
+    async function fetchStock(symbol) {
+      const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    function renderSkeleton(stock) {
+      const id = stock.symbol.replace(/\./g, '_');
+      return `
+        <div class="card" id="card-${id}">
+          <div class="card-header">
+            <div>
+              <div class="card-name">${stock.name || stock.symbol}</div>
+              <div class="card-symbol">${stock.symbol}</div>
+            </div>
+            <div class="card-right">
+              <span class="tag">${stock.tag || '--'}</span>
+              <div class="sentiment"><span class="dot" style="background:var(--muted)"></span><span style="color:var(--muted)">加载中</span></div>
+            </div>
+          </div>
+          <div class="card-price">
+            <div class="price-main skeleton" style="width:120px;height:2rem;">&nbsp;</div>
+            <div class="price-change skeleton" style="width:160px;height:1rem;margin-top:6px;">&nbsp;</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-${id}"></canvas></div>
+          <div class="indicators">
+            <div class="indicator"><div class="indicator-label">MA20</div><div class="indicator-value">--</div></div>
+            <div class="indicator"><div class="indicator-label">RSI</div><div class="indicator-value">--</div></div>
+            <div class="indicator"><div class="indicator-label">成交量</div><div class="indicator-value">--</div></div>
+          </div>
+          <button class="btn-delete" onclick="removeStock('${stock.symbol}')">✕ 删除</button>
+        </div>`;
+    }
+
+    function updateCard(symbol, data) {
+      const id = symbol.replace(/\./g, '_');
+      const card = document.getElementById(`card-${id}`);
+      if (!card) return;
+
+      const isUp = data.change >= 0;
+      const colorClass = isUp ? 'up' : 'down';
+      const sentimentText = isUp ? '看涨' : '看跌';
+
+      card.querySelector('.card-name').textContent = data.name || symbol;
+      card.querySelector('.card-symbol').textContent = symbol;
+
+      const sentimentEl = card.querySelector('.sentiment');
+      sentimentEl.innerHTML = `<span class="dot ${colorClass}"></span><span style="color:var(--${colorClass})">${sentimentText}</span>`;
+
+      const priceEl = card.querySelector('.price-main');
+      priceEl.classList.remove('skeleton');
+      priceEl.style.width = '';
+      priceEl.style.height = '';
+      priceEl.textContent = fmtPrice(data.price, data.currency);
+
+      const changeEl = card.querySelector('.price-change');
+      changeEl.classList.remove('skeleton');
+      changeEl.style.width = '';
+      changeEl.style.height = '';
+      changeEl.classList.add(colorClass);
+      changeEl.textContent = fmtChange(data.change, data.changePercent);
+
+      const indicators = card.querySelectorAll('.indicator-value');
+      indicators[0].textContent = data.ma20 != null ? data.ma20.toFixed(3) : '--';
+      indicators[1].textContent = data.rsi != null ? data.rsi.toFixed(1) : '--';
+      if (data.rsi != null) {
+        indicators[1].style.color = data.rsi > 70 ? 'var(--down)' : data.rsi < 30 ? 'var(--up)' : 'var(--accent)';
+      }
+      indicators[2].textContent = fmtVolume(data.volume);
+
+      drawChart(id, data.chartData, isUp);
+    }
+
+    function drawChart(id, chartData, isUp) {
+      const canvas = document.getElementById(`chart-${id}`);
+      if (!canvas) return;
+      if (charts[id]) { charts[id].destroy(); }
+
+      const color = isUp ? '#00ff88' : '#ff3366';
+      const labels = chartData.map(d => {
+        const dt = new Date(d.t);
+        return `${dt.getHours().toString().padStart(2,'0')}:${dt.getMinutes().toString().padStart(2,'0')}`;
+      });
+      const values = chartData.map(d => d.v);
+
+      charts[id] = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            borderColor: color,
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: true,
+            backgroundColor: (ctx) => {
+              const grad = ctx.chart.ctx.createLinearGradient(0, 0, 0, 80);
+              grad.addColorStop(0, isUp ? 'rgba(0,255,136,0.2)' : 'rgba(255,51,102,0.2)');
+              grad.addColorStop(1, 'rgba(0,0,0,0)');
+              return grad;
+            },
+            tension: 0.3,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: { x: { display: false }, y: { display: false } },
+          animation: { duration: 400 }
+        }
+      });
+    }
+
+    async function refreshAll() {
+      await Promise.allSettled(stocks.map(async stock => {
+        try {
+          const data = await fetchStock(stock.symbol);
+          if (!stock.tag) stock.tag = '--';
+          updateCard(stock.symbol, data);
+        } catch (e) {
+          console.error(stock.symbol, e);
+        }
+      }));
+      document.getElementById('last-update').textContent =
+        '最后更新: ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById('grid');
+      grid.innerHTML = stocks.map(s => renderSkeleton(s)).join('');
+    }
+
+    function openModal() {
+      document.getElementById('modal').classList.add('open');
+      document.getElementById('symbol-input').focus();
+    }
+    function closeModal() {
+      document.getElementById('modal').classList.remove('open');
+      document.getElementById('symbol-input').value = '';
+    }
+
+    async function addStock() {
+      const input = document.getElementById('symbol-input');
+      const symbol = input.value.trim().toUpperCase();
+      if (!symbol) return;
+      if (stocks.find(s => s.symbol === symbol)) { alert('该股票已在列表中'); return; }
+
+      const newStock = { symbol, name: symbol, tag: '--' };
+      stocks.push(newStock);
+      saveStocks();
+      closeModal();
+      renderGrid();
+
+      try {
+        const data = await fetchStock(symbol);
+        newStock.name = data.name || symbol;
+        saveStocks();
+        updateCard(symbol, data);
+      } catch {
+        alert(`无法获取 ${symbol} 的数据，请检查代码是否正确`);
+        stocks = stocks.filter(s => s.symbol !== symbol);
+        saveStocks();
+        renderGrid();
+      }
+    }
+
+    function removeStock(symbol) {
+      stocks = stocks.filter(s => s.symbol !== symbol);
+      saveStocks();
+      const chartId = symbol.replace(/\./g, '_');
+      if (charts[chartId]) {
+        charts[chartId].destroy();
+        delete charts[chartId];
+      }
+      renderGrid();
+      refreshAll();
+    }
+
+    document.getElementById('symbol-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') addStock();
+      if (e.key === 'Escape') closeModal();
+    });
+
+    renderGrid();
+    refreshAll();
+    setInterval(refreshAll, 15 * 60 * 1000);
+  </script>
+</body>
+</html>
